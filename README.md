@@ -1,0 +1,1 @@
+# Auto Close Deplicate Tabs
