@@ -1,8 +1,8 @@
 {
-  "name": "auto-close-deplicate-tabs",
-  "displayName": "Auto close deplicate tabs",
+  "name": "auto-close-duplicate-tabs",
+  "displayName": "Auto close duplicate tabs",
   "version": "0.0.1",
-  "description": "A basic Plasmo extension.",
+  "description": "Automatically closes duplicate tabs based on URL or domain for specific sites.",
   "author": "Rie",
   "scripts": {
     "dev": "plasmo dev",
