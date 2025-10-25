@@ -10,10 +10,10 @@
   ],
   "compilerOptions": {
     "paths": {
-      "~*": [
+      "~/*": [
         "./*"
       ]
-    },
-    "baseUrl": "."
+    }
+    ,"moduleResolution": "bundler"
   }
 }
