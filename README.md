@@ -1,3 +1,11 @@
+## Auto Close Duplicate Tabs
+
+A Chrome extension that automatically closes duplicate tabs.
+If you open a new tab with the same URL (or tha same domain for specific sites),
+the previous tab will be closed automatically.
+
+---
+
 This is a [Plasmo extension](https://docs.plasmo.com/) project bootstrapped with [`plasmo init`](https://www.npmjs.com/package/plasmo).
 
 ## Getting Started
