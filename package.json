@@ -24,6 +24,10 @@
     "typescript": "5.3.3"
   },
   "manifest": {
+    "permissions": [
+      "tabs",
+      "webNavigation"
+    ],
     "host_permissions": [
       "https://*/*"
     ]
