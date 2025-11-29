@@ -29,7 +29,7 @@ function isUserLinkNavigation(details: chrome.webNavigation.WebNavigationTransit
 }
 
 async function findDuplicateTabs(targetUrl: URL, currentTabId: number) {
-  const tabs = await chrome.tabs.query({});
+  const all = await chrome.tabs.query({});
   const current = await chrome.tabs.get(currentTabId);
 
   if (!current.windowId) return { sameWindow: [], otherWindows: [] };
@@ -37,57 +37,68 @@ async function findDuplicateTabs(targetUrl: URL, currentTabId: number) {
   const sameWindow: chrome.tabs.Tab[] = [];
   const otherWindows: chrome.tabs.Tab[] = [];
 
-  for (const tab of tabs) {
+  for (const tab of all) {
     if (tab.id === currentTabId || !tab.url) continue;
-
     try {
       const url = new URL(tab.url);
       if (!isDuplicateUrl(targetUrl, url)) continue;
 
       (tab.windowId === current.windowId ? sameWindow : otherWindows).push(tab);
-    } catch {
-      continue;
-    }
+    } catch {}
   }
 
   return { sameWindow, otherWindows };
 }
 
-/** 重複タブの処理 */
-async function handleDuplicate(tabId: number, isNewTab: boolean, existing: chrome.tabs.Tab) {
-  if (isNewTab) {
-    // 新規タブなら閉じるだけ
-    await chrome.tabs.remove(tabId).catch(() => {});
+// ──────────────────────────────
+// 重複タブの整理
+// ──────────────────────────────
+
+/** A: ページ内リンク・ホイールクリック（既存タブ優先） */
+async function handleInternalNavigation(tabId: number, isNew: boolean, targetUrl: URL) {
+  const { sameWindow, otherWindows } = await findDuplicateTabs(targetUrl, tabId);
+
+  if (sameWindow[0]) {
+    // 既存タブを優先
+    await closeOrRevert(tabId, isNew, sameWindow[0]);
+  }
+
+  // 他ウィンドウは問答無用で閉じる
+  for (const dup of otherWindows) {
+    if (dup.id) chrome.tabs.remove(dup.id).catch(() => {});
+  }
+}
+
+/** B: 外部アプリ・アドレスバー → 新規タブ優先（既存重複を閉じる） */
+async function handleExternalNavigation(tabId: number, targetUrl: URL) {
+  const { sameWindow, otherWindows } = await findDuplicateTabs(targetUrl, tabId);
+
+  // 新しく開いたタブを残して、既存の重複タブを閉じる
+  for (const tab of [...sameWindow, ...otherWindows]) {
+    if (tab.id) chrome.tabs.remove(tab.id).catch(() => {});
+  }
+}
+
+async function closeOrRevert(
+  newTabId: number,
+  isNew: boolean,
+  existing: chrome.tabs.Tab
+) {
+  if (isNew) {
+    // 新規なら閉じるだけ
+    await chrome.tabs.remove(newTabId).catch(() => {});
     return;
   }
 
-  // 既存タブを優先
-  processingTabs.add(tabId);
+  // goBack → 既存タブにフォーカス
+  processingTabs.add(newTabId);
   try {
-    await chrome.tabs.goBack(tabId).catch(() => {});
+    await chrome.tabs.goBack(newTabId).catch(() => {});
     if (existing.id) {
       await chrome.tabs.update(existing.id, { active: true }).catch(() => {});
     }
   } finally {
-    processingTabs.delete(tabId);
-  }
-}
-
-/** 重複タブ処理本体 */
-async function handleDuplicateTabs(tabId: number, details: chrome.webNavigation.WebNavigationTransitionCallbackDetails) {
-  const isNew = newlyCreatedTabs.delete(tabId);
-  const targetUrl = new URL(details.url);
-
-  const { sameWindow, otherWindows } = await findDuplicateTabs(targetUrl, tabId);
-
-  // 同一ウィンドウに重複タブがあるならそれを優先
-  if (sameWindow[0]) {
-    await handleDuplicate(tabId, isNew, sameWindow[0]);
-  }
-
-  // 他ウィンドウの重複は問答無用で閉じる
-  for (const t of otherWindows) {
-    if (t.id) await chrome.tabs.remove(t.id).catch(() => {});
+    processingTabs.delete(newTabId);
   }
 }
 
@@ -103,22 +114,24 @@ chrome.webNavigation.onCommitted.addListener(async details => {
   if (!isMainFrame(details)) return;
 
   const tabId = details.tabId;
-
-  // goBack 直後の二重処理回避
   if (processingTabs.has(tabId)) {
     processingTabs.delete(tabId);
     return;
   }
 
-  // 「ユーザーがページ内リンクをクリックして開いた」場合だけ、重複タブ制御を行う
-  if (!isUserLinkNavigation(details)) {
-    return;
-  }
+  const isNew = newlyCreatedTabs.delete(tabId);
+  const targetUrl = new URL(details.url);
 
   try {
-    await handleDuplicateTabs(tabId, details);
+    if (isUserLinkNavigation(details)) {
+      // A: ページ内リンク・ホイールクリック
+      await handleInternalNavigation(tabId, isNew, targetUrl);
+    } else {
+      // B: 外部アプリ・アドレスバー・ブックマーク
+      await handleExternalNavigation(tabId, targetUrl);
+    }
   } catch (e) {
-    console.error('[duplicate-tab-handler] Error:', e);
+    console.error('[duplicate-handler] error:', e);
     processingTabs.delete(tabId);
   }
 });
