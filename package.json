@@ -1,7 +1,7 @@
 {
   "name": "auto-close-duplicate-tabs",
   "displayName": "Auto close duplicate tabs",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Automatically closes duplicate tabs based on URL or domain for specific sites.",
   "author": "Rie",
   "scripts": {
